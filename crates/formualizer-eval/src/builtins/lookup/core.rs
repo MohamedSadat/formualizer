@@ -620,11 +620,6 @@ impl Function for VLookupFn {
             let current_sheet = ctx.current_sheet();
             let rv = ctx.resolve_range_view(&table_ref, current_sheet)?;
             let (rows, cols) = rv.dims();
-            if col_index as usize > cols {
-                return Ok(crate::traits::CalcValue::Scalar(LiteralValue::Error(
-                    ExcelError::new(ExcelErrorKind::Ref),
-                )));
-            }
 
             let first_col_view = rv.sub_view(0, 0, rows, 1);
             let row_idx_opt = if !approximate {
@@ -661,6 +656,11 @@ impl Function for VLookupFn {
             };
 
             match row_idx_opt {
+                // Excel looks first: a value it doesn't find is #N/A even when the
+                // column is out of range.
+                Some(_) if col_index as usize > cols => Ok(crate::traits::CalcValue::Scalar(
+                    LiteralValue::Error(ExcelError::new(ExcelErrorKind::Ref)),
+                )),
                 Some(i) => {
                     let target_col_idx = (col_index - 1) as usize;
                     // An empty matched cell stays Empty, as in Excel: an enclosing

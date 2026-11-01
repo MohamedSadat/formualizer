@@ -182,3 +182,18 @@ fn rows_and_columns_pass_on_a_reference_error() {
         );
     }
 }
+
+#[test]
+fn vlookup_looks_before_it_checks_the_column() {
+    let mut engine = new_engine();
+    number(&mut engine, 1, 1, 5.0);
+    formula(&mut engine, 1, 3, "=VLOOKUP(6,A1:A1,2,FALSE)");
+    formula(&mut engine, 2, 3, "=VLOOKUP(5,A1:A1,2,FALSE)");
+    engine.evaluate_all().unwrap();
+    let kind = |row| match engine.get_cell_value("Sheet1", row, 3) {
+        Some(LiteralValue::Error(error)) => error.kind,
+        other => panic!("not an error: {other:?}"),
+    };
+    assert_eq!(kind(1), formualizer_common::ExcelErrorKind::Na);
+    assert_eq!(kind(2), formualizer_common::ExcelErrorKind::Ref);
+}
