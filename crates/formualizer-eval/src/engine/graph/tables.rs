@@ -115,9 +115,11 @@ impl DependencyGraph {
         let sheet_id = range.start.sheet_id;
         let vertex = self.allocate_symbol_vertex(VertexKind::Table, sheet_id);
 
-        // Register stripes for the full table region so cell edits inside the table
-        // propagate to formulas that depend on the table.
-        self.register_table_range_deps(vertex, &range);
+        // Register stripes for the table region so cell edits inside the table propagate
+        // to formulas that depend on the table. The totals row is left out: its formulas
+        // read the table, so it can't also feed the table's symbol without a false cycle.
+        let deps_range = Self::table_range_without_totals(&range, totals_row);
+        self.register_table_range_deps(vertex, &deps_range);
 
         let entry = TableEntry {
             name: name.to_string(),
@@ -158,7 +160,8 @@ impl DependencyGraph {
 
         // Replace range deps (cleans old stripes).
         self.remove_dependent_edges(vertex);
-        self.register_table_range_deps(vertex, &new_range);
+        let deps_range = Self::table_range_without_totals(&new_range, totals_row);
+        self.register_table_range_deps(vertex, &deps_range);
 
         if let Some(existing) = self.tables.get_mut(&canon) {
             existing.range = new_range;
@@ -203,6 +206,19 @@ impl DependencyGraph {
         self.bump_symbol_revision();
 
         Ok(())
+    }
+
+    fn table_range_without_totals(range: &RangeRef, totals_row: bool) -> RangeRef {
+        let mut out = range.clone();
+        if totals_row && range.end.coord.row() > range.start.coord.row() {
+            out.end.coord = crate::reference::Coord::new(
+                range.end.coord.row() - 1,
+                range.end.coord.col(),
+                range.end.coord.row_abs(),
+                range.end.coord.col_abs(),
+            );
+        }
+        out
     }
 
     fn register_table_range_deps(&mut self, table_vertex: VertexId, range: &RangeRef) {

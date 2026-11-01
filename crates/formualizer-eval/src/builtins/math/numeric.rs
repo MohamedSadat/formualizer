@@ -1,5 +1,6 @@
 use super::super::utils::{
-    ARG_NUM_LENIENT_ONE, ARG_NUM_LENIENT_TWO, ARG_RANGE_NUM_LENIENT_ONE, coerce_num,
+    ARG_NUM_LENIENT_ONE, ARG_NUM_LENIENT_THREE, ARG_NUM_LENIENT_TWO, ARG_RANGE_NUM_LENIENT_ONE,
+    coerce_num,
 };
 use super::{AggregateArgument, resolve_aggregate_argument};
 use crate::args::ArgSchema;
@@ -1072,7 +1073,7 @@ impl Function for CeilingMathFn {
         true
     }
     fn arg_schema(&self) -> &'static [ArgSchema] {
-        &ARG_NUM_LENIENT_TWO[..]
+        &ARG_NUM_LENIENT_THREE[..]
     } // allow up to 3 handled manually
     fn eval<'a, 'b, 'c>(
         &self,
@@ -1277,7 +1278,7 @@ impl Function for FloorMathFn {
         true
     }
     fn arg_schema(&self) -> &'static [ArgSchema] {
-        &ARG_NUM_LENIENT_TWO[..]
+        &ARG_NUM_LENIENT_THREE[..]
     }
     fn eval<'a, 'b, 'c>(
         &self,
