@@ -48,10 +48,11 @@ impl TableEntrySnapshot {
     }
 
     fn col_index(&self, header: &str) -> Option<usize> {
-        let header_key = header.to_lowercase();
+        // Column names can end in a space, which a parsed reference has lost.
+        let header_key = header.trim().to_lowercase();
         self.headers
             .iter()
-            .position(|h| h.to_lowercase() == header_key)
+            .position(|h| h.trim().to_lowercase() == header_key)
     }
 }
 
@@ -1072,18 +1073,19 @@ impl<'a> IngestPipeline<'a> {
             ));
         }
 
-        let index = |name: &str| {
-            table
-                .col_index(name)
-                .map(|idx| sc0 + idx as u32)
-                .ok_or_else(|| {
-                    ExcelError::new(ExcelErrorKind::Ref).with_message(format!(
-                        "Unknown table column in this-row reference: {name}"
-                    ))
-                })
-        };
+        let index = |name: &str| table.col_index(name).map(|idx| sc0 + idx as u32);
         let (first_col0, last_col0) = match columns {
-            Some((first, last)) => (index(first)?, index(last)?),
+            Some((first, last)) => match (index(first), index(last)) {
+                (Some(first), Some(last)) => (first, last),
+                // A named reference stays a table reference, so that only its own
+                // cell shows the error when it evaluates.
+                _ if named => return Ok(false),
+                _ => {
+                    return Err(ExcelError::new(ExcelErrorKind::Ref).with_message(format!(
+                        "Unknown table column in this-row reference: {first}"
+                    )));
+                }
+            },
             None => (sc0, ec0),
         };
         *reference = if first_col0 == last_col0 {

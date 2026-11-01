@@ -26,10 +26,11 @@ impl TableEntry {
     }
 
     pub fn col_index(&self, header: &str) -> Option<usize> {
-        let header_key = header.to_lowercase();
+        // Column names can end in a space, which a parsed reference has lost.
+        let header_key = header.trim().to_lowercase();
         self.headers
             .iter()
-            .position(|h| h.to_lowercase() == header_key)
+            .position(|h| h.trim().to_lowercase() == header_key)
     }
 }
 

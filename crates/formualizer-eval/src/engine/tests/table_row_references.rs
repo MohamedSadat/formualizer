@@ -197,3 +197,42 @@ fn vlookup_looks_before_it_checks_the_column() {
     assert_eq!(kind(1), formualizer_common::ExcelErrorKind::Na);
     assert_eq!(kind(2), formualizer_common::ExcelErrorKind::Ref);
 }
+
+#[test]
+fn a_column_name_with_a_trailing_space_still_resolves() {
+    let mut engine = new_engine();
+    number(&mut engine, 2, 1, 4.0);
+    number(&mut engine, 3, 1, 6.0);
+    table(&mut engine, 3, 2, &["Cost ", "Twice"], false);
+    for row in 2..=3 {
+        formula(&mut engine, row, 2, "=Sales[[#This Row],[Cost ]]*2");
+    }
+    formula(&mut engine, 1, 4, "=SUM(Sales[Cost ])");
+    engine.evaluate_all().unwrap();
+    assert_eq!(
+        engine.get_cell_value("Sheet1", 3, 2),
+        Some(LiteralValue::Number(12.0))
+    );
+    assert_eq!(
+        engine.get_cell_value("Sheet1", 1, 4),
+        Some(LiteralValue::Number(10.0))
+    );
+}
+
+#[test]
+fn an_unknown_column_is_an_error_in_its_own_cell_only() {
+    let mut engine = new_engine();
+    number(&mut engine, 2, 1, 4.0);
+    table(&mut engine, 2, 2, &["Cost", "Twice"], false);
+    formula(&mut engine, 2, 2, "=Sales[[#This Row],[Nope]]*2");
+    formula(&mut engine, 1, 4, "=SUM(Sales[Cost])");
+    engine.evaluate_all().unwrap();
+    assert!(matches!(
+        engine.get_cell_value("Sheet1", 2, 2),
+        Some(LiteralValue::Error(_))
+    ));
+    assert_eq!(
+        engine.get_cell_value("Sheet1", 1, 4),
+        Some(LiteralValue::Number(4.0))
+    );
+}
