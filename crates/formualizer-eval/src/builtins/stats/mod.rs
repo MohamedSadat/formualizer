@@ -7338,6 +7338,19 @@ impl Function for FrequencyFn {
             )));
         }
 
+        // A single value that isn't a number has nothing to count, unlike the same thing in an
+        // array, which is skipped.
+        if let Ok(crate::traits::CalcValue::Scalar(value)) = args[0].value() {
+            if matches!(
+                value,
+                LiteralValue::Boolean(_) | LiteralValue::Text(_) | LiteralValue::Empty
+            ) {
+                return Ok(crate::traits::CalcValue::Scalar(LiteralValue::Error(
+                    ExcelError::new_value(),
+                )));
+            }
+        }
+
         // Collect data array
         let data = collect_numeric_stats(&args[0..1])?;
 
