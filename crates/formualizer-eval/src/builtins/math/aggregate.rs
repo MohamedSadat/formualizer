@@ -410,10 +410,19 @@ impl Function for AverageFn {
                     if let LiteralValue::Error(e) = v {
                         return Ok(crate::traits::CalcValue::Scalar(LiteralValue::Error(e)));
                     }
-                    if let Ok(n) = crate::coercion::to_number_lenient_with_locale(&v, &ctx.locale())
-                    {
-                        sum += n;
-                        cnt += 1;
+                    match crate::coercion::to_number_lenient_with_locale(&v, &ctx.locale()) {
+                        Ok(n) => {
+                            sum += n;
+                            cnt += 1;
+                        }
+                        // Text given directly that doesn't read as a number is an error, unlike
+                        // the same text in a cell.
+                        Err(_) if !arg.may_return_reference() => {
+                            return Ok(crate::traits::CalcValue::Scalar(LiteralValue::Error(
+                                ExcelError::new_value(),
+                            )));
+                        }
+                        Err(_) => {}
                     }
                 }
             }
