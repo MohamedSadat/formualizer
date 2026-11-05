@@ -171,7 +171,6 @@ fn cell_contents_on_blank_is_empty_in_graph() {
 #[test]
 fn cell_unsupported_info_type_is_value_error() {
     assert_error(r#"=CELL("format",A1)"#, ExcelErrorKind::Value);
-    assert_error(r#"=CELL("filename",A1)"#, ExcelErrorKind::Value);
     assert_error(r#"=CELL("protect",A1)"#, ExcelErrorKind::Value);
     assert_error(r#"=CELL("width",A1)"#, ExcelErrorKind::Value);
 }

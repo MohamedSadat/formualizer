@@ -837,10 +837,49 @@ impl Function for FormulaTextFn {
             return na_result();
         };
         match ctx.formula_text_at_cell(cell)? {
-            Some(text) => Ok(scalar(LiteralValue::Text(text))),
+            Some(text) => Ok(scalar(LiteralValue::Text(formula_for_people(&text)))),
             None => na_result(),
         }
     }
+}
+
+/// A formula as a person sees it: without the prefixes a file gives newer functions, and with
+/// `A1#` for what a file writes as `_xlfn.ANCHORARRAY(A1)`.
+fn formula_for_people(text: &str) -> String {
+    const ANCHOR: &str = "ANCHORARRAY(";
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    let mut quote = None;
+    while let Some(ch) = rest.chars().next() {
+        if let Some(open) = quote {
+            if ch == open {
+                quote = None;
+            }
+        } else if ch == '"' || ch == '\'' {
+            quote = Some(ch);
+        } else if let Some(after) = ["_xlfn.", "_xlws.", "_xlpm."].iter().find_map(|prefix| {
+            rest.get(..prefix.len())
+                .filter(|head| head.eq_ignore_ascii_case(prefix))
+                .map(|_| &rest[prefix.len()..])
+        }) {
+            rest = after;
+            continue;
+        } else if let Some(after) = rest
+            .get(..ANCHOR.len())
+            .filter(|head| head.eq_ignore_ascii_case(ANCHOR))
+            .map(|_| &rest[ANCHOR.len()..])
+        {
+            if let Some(close) = after.find(')') {
+                out.push_str(&formula_for_people(&after[..close]));
+                out.push('#');
+                rest = &after[close + 1..];
+                continue;
+            }
+        }
+        out.push(ch);
+        rest = &rest[ch.len_utf8()..];
+    }
+    out
 }
 
 /// Returns the 1-based sheet index for the current sheet or a reference.
@@ -1908,6 +1947,12 @@ impl Function for CellFn {
             }
             "col" => Ok(scalar(LiteralValue::Int(col as i64))),
             "row" => Ok(scalar(LiteralValue::Int(row as i64))),
+            // The workbook's path isn't known here. What matters to formulas that read this is the
+            // sheet's name, which comes after the bracket.
+            "filename" => {
+                let sheet = reference_sheet(&reference).unwrap_or_else(|| ctx.current_sheet());
+                Ok(scalar(LiteralValue::Text(format!("[Book]{sheet}"))))
+            }
             _ => Ok(scalar(LiteralValue::Error(ExcelError::new_value()))),
         }
     }
