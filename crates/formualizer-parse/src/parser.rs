@@ -3147,6 +3147,18 @@ impl Parser {
         let value = self.span_value(&span);
         let token = self.span_to_token(&span);
 
+        // A function given by name, as a file writes `GROUPBY(A:A,B:B,SUM)`. What takes one reads
+        // its name.
+        if span.subtype == TokenSubType::Range {
+            if let Some(name) = value.strip_prefix("_xleta.") {
+                let name = name.to_string();
+                return Ok(BuiltNode {
+                    height: 1,
+                    node: ASTNode::new(ASTNodeType::Literal(LiteralValue::Text(name)), Some(token)),
+                });
+            }
+        }
+
         match span.subtype {
             TokenSubType::Number => {
                 let value = value.parse::<f64>().map_err(|_| ParserError {
