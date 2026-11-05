@@ -320,6 +320,10 @@ impl DependencyGraph {
                 return Err(ExcelError::new(ExcelErrorKind::Value)
                     .with_message(format!("Sheet '{new_name}' already exists")));
             }
+            // The same name in other letters: only its spelling changes.
+            if old_name != new_name {
+                self.sheet_reg.rename(sheet_id, new_name)?;
+            }
             return Ok(());
         }
 
