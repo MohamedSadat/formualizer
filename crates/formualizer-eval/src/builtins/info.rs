@@ -397,6 +397,9 @@ impl Function for IsErrorFn {
     fn family_kernel(&self) -> Option<crate::function::FamilyKernel> {
         Some(crate::function::FamilyKernel::IsError)
     }
+    fn reads_errors(&self) -> bool {
+        true
+    }
     fn name(&self) -> &'static str {
         "ISERROR"
     }
@@ -419,7 +422,9 @@ impl Function for IsErrorFn {
                 ExcelError::new_value(),
             )));
         }
-        let v = args[0].value()?.into_literal();
+        let v = args[0]
+            .value()
+            .map_or_else(LiteralValue::Error, |value| value.into_literal());
         Ok(crate::traits::CalcValue::Scalar(LiteralValue::Boolean(
             matches!(v, LiteralValue::Error(_)),
         )))
@@ -473,6 +478,9 @@ impl Function for IsErrFn {
     fn family_kernel(&self) -> Option<crate::function::FamilyKernel> {
         Some(crate::function::FamilyKernel::IsErr)
     }
+    fn reads_errors(&self) -> bool {
+        true
+    }
     fn name(&self) -> &'static str {
         "ISERR"
     }
@@ -495,7 +503,9 @@ impl Function for IsErrFn {
                 ExcelError::new_value(),
             )));
         }
-        let v = args[0].value()?.into_literal();
+        let v = args[0]
+            .value()
+            .map_or_else(LiteralValue::Error, |value| value.into_literal());
         let is_err = match v {
             LiteralValue::Error(e) => e.kind != ExcelErrorKind::Na,
             _ => false,
@@ -553,6 +563,9 @@ impl Function for IsNaFn {
     fn family_kernel(&self) -> Option<crate::function::FamilyKernel> {
         Some(crate::function::FamilyKernel::IsNa)
     }
+    fn reads_errors(&self) -> bool {
+        true
+    }
     fn name(&self) -> &'static str {
         "ISNA"
     }
@@ -575,7 +588,9 @@ impl Function for IsNaFn {
                 ExcelError::new_value(),
             )));
         }
-        let v = args[0].value()?.into_literal();
+        let v = args[0]
+            .value()
+            .map_or_else(LiteralValue::Error, |value| value.into_literal());
         let is_na = matches!(v, LiteralValue::Error(e) if e.kind==ExcelErrorKind::Na);
         Ok(crate::traits::CalcValue::Scalar(LiteralValue::Boolean(
             is_na,

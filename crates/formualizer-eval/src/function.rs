@@ -151,6 +151,17 @@ pub trait Function: Send + Sync + 'static {
         FnCaps::PURE
     }
 
+    /// The name to look up in [`crate::array_params`], for a function that stands in for another.
+    fn array_class_name(&self) -> &str {
+        self.name()
+    }
+
+    /// Whether this function's job is to look at errors, so that an argument that can't be
+    /// evaluated, such as a name nobody defined, reaches it instead of ending the call.
+    fn reads_errors(&self) -> bool {
+        false
+    }
+
     /// Engine-internal: the family kernel that reproduces this function
     /// exactly over a family run. Only the built-in implementations return
     /// `Some`; an override registered under the same name keeps `None`, so
@@ -313,6 +324,12 @@ pub trait Function: Send + Sync + 'static {
 
         if let Some(result) = lift_over_arrays(self, args, ctx) {
             return result;
+        }
+
+        if self.reads_errors() && args.len() >= self.min_args() {
+            return self
+                .eval(args, ctx)
+                .map(|result| self.apply_format_propagation(result));
         }
 
         // Central argument validation (includes min-arity check)
