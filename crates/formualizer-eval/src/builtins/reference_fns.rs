@@ -172,7 +172,7 @@ fn resolve_reference_bounds<'b>(
         ReferenceType::Cell {
             sheet, row, col, ..
         } => Ok(Some((sheet.clone(), *row, *col, *row, *col))),
-        ReferenceType::NamedRange(_) => {
+        ReferenceType::NamedRange(_) | ReferenceType::Table(_) => {
             let rv = ctx.resolve_range_view(base, ctx.current_sheet())?;
             if !rv.is_sheet_backed() {
                 return Ok(None);
