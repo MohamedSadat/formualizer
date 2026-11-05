@@ -12614,6 +12614,24 @@ where
         }
     }
 
+    /// Takes an edit's value off a cell, so that what lies under it shows.
+    fn clear_edit_overlay_0based(&mut self, sheet: &str, row0: usize, col0: usize) {
+        let Some(asheet) = self.arrow_sheets.sheet_mut(sheet) else {
+            return;
+        };
+        if col0 >= asheet.columns.len() {
+            return;
+        }
+        let Some((ch_idx, in_off)) = asheet.chunk_of_row(row0) else {
+            return;
+        };
+        if let Some(ch) = asheet.ensure_column_chunk_mut(col0, ch_idx) {
+            if ch.overlay.get_scalar(in_off).is_some() {
+                let _ = ch.overlay.remove(in_off);
+            }
+        }
+    }
+
     fn write_computed_overlay_value_0based(
         &mut self,
         sheet: &str,
@@ -20148,9 +20166,9 @@ where
             LiteralValue::Number(0.0)
         } else {
             LiteralValue::Error(
-            ExcelError::new(ExcelErrorKind::Circ)
-                .with_message("Circular dependency detected".to_string()),
-        )
+                ExcelError::new(ExcelErrorKind::Circ)
+                    .with_message("Circular dependency detected".to_string()),
+            )
         };
 
         // ── 0b. Spec-§4 persistence repair: structural edits clear computed
@@ -21066,6 +21084,12 @@ where
                 let c_off = idx % width;
                 let v = rows[r_off][c_off].clone();
                 let sheet_name = self.graph.sheet_name(cell.sheet_id).to_string();
+                // A cell a spill can take is empty, and an edit that left it so mustn't hide it.
+                self.clear_edit_overlay_0based(
+                    &sheet_name,
+                    cell.coord.row() as usize,
+                    cell.coord.col() as usize,
+                );
                 self.mirror_value_to_computed_overlay(
                     &sheet_name,
                     cell.coord.row() + 1,
