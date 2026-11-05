@@ -125,6 +125,16 @@ impl Function for RowFn {
             Err(e) => return Ok(crate::traits::CalcValue::Scalar(LiteralValue::Error(e))),
         };
 
+        // A reference of several rows gives all their numbers.
+        if let Some((first, count)) = reference_span(&reference, ctx, true) {
+            if count > 1 {
+                let rows = (0..count)
+                    .map(|at| vec![LiteralValue::Int(first + at)])
+                    .collect();
+                return Ok(crate::traits::CalcValue::Scalar(LiteralValue::Array(rows)));
+            }
+        }
+
         // Extract row number from reference (1-based)
         let row_1based = match &reference {
             ReferenceType::Cell { row, .. } => *row as i64,
@@ -157,6 +167,43 @@ impl Function for RowFn {
         Ok(crate::traits::CalcValue::Scalar(LiteralValue::Int(
             row_1based,
         )))
+    }
+}
+
+/// The first row or column of a reference, 1-based, and how many there are.
+fn reference_span<'b>(
+    reference: &ReferenceType,
+    ctx: &dyn FunctionContext<'b>,
+    rows: bool,
+) -> Option<(i64, i64)> {
+    match reference {
+        ReferenceType::Cell { .. } => None,
+        ReferenceType::Range {
+            start_row: Some(sr),
+            start_col: Some(sc),
+            end_row: Some(er),
+            end_col: Some(ec),
+            ..
+        } => {
+            let (from, to) = if rows { (*sr, *er) } else { (*sc, *ec) };
+            let (from, to) = (from.min(to), from.max(to));
+            Some((i64::from(from), i64::from(to - from) + 1))
+        }
+        // An open range covers what the sheet uses, as the ranges it goes with do.
+        _ => {
+            let view = ctx
+                .resolve_range_view(reference, ctx.current_sheet())
+                .ok()?;
+            if view.is_empty() || !view.is_sheet_backed() {
+                return None;
+            }
+            let (height, width) = view.dims();
+            Some(if rows {
+                (view.start_row() as i64 + 1, height as i64)
+            } else {
+                (view.start_col() as i64 + 1, width as i64)
+            })
+        }
     }
 }
 
@@ -419,6 +466,16 @@ impl Function for ColumnFn {
             Err(e) => return Ok(crate::traits::CalcValue::Scalar(LiteralValue::Error(e))),
         };
 
+        // A reference of several columns gives all their numbers.
+        if let Some((first, count)) = reference_span(&reference, ctx, false) {
+            if count > 1 {
+                let row = (0..count).map(|at| LiteralValue::Int(first + at)).collect();
+                return Ok(crate::traits::CalcValue::Scalar(LiteralValue::Array(vec![
+                    row,
+                ])));
+            }
+        }
+
         // Extract column number from reference (1-based)
         let col_1based = match &reference {
             ReferenceType::Cell { col, .. } => *col as i64,
@@ -634,7 +691,7 @@ mod tests {
             .into_literal();
         assert_eq!(result, LiteralValue::Int(5));
 
-        // ROW(A1:C3) -> 1 (first row)
+        // ROW(A1:C3) -> every row
         let range_ref = ASTNode::new(
             ASTNodeType::Reference {
                 original: "A1:C3".into(),
@@ -648,7 +705,14 @@ mod tests {
             .dispatch(&args2, &ctx.function_context(None))
             .unwrap()
             .into_literal();
-        assert_eq!(result2, LiteralValue::Int(1));
+        assert_eq!(
+            result2,
+            LiteralValue::Array(vec![
+                vec![LiteralValue::Int(1)],
+                vec![LiteralValue::Int(2)],
+                vec![LiteralValue::Int(3)],
+            ])
+        );
     }
 
     #[test]
@@ -843,7 +907,7 @@ mod tests {
             .into_literal();
         assert_eq!(result, LiteralValue::Int(3));
 
-        // COLUMN(B2:D4) -> 2 (first column)
+        // COLUMN(B2:D4) -> every column
         let range_ref = ASTNode::new(
             ASTNodeType::Reference {
                 original: "B2:D4".into(),
@@ -857,7 +921,14 @@ mod tests {
             .dispatch(&args2, &ctx.function_context(None))
             .unwrap()
             .into_literal();
-        assert_eq!(result2, LiteralValue::Int(2));
+        assert_eq!(
+            result2,
+            LiteralValue::Array(vec![vec![
+                LiteralValue::Int(2),
+                LiteralValue::Int(3),
+                LiteralValue::Int(4),
+            ]])
+        );
     }
 
     #[test]
