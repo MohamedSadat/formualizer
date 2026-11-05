@@ -443,6 +443,15 @@ impl DependencyGraph {
     /// workbook scope. Equivalent to [`Self::resolve_name_entry_in_scope`] with
     /// [`NameScope::Sheet`].
     pub fn resolve_name_entry(&self, name: &str, current_sheet: SheetId) -> Option<&NamedRange> {
+        // `Sheet2!Name` is the name as seen from that sheet.
+        if let Some((sheet, bare)) = name.rsplit_once('!') {
+            let sheet = sheet
+                .strip_prefix('\'')
+                .and_then(|inner| inner.strip_suffix('\''))
+                .map_or_else(|| sheet.to_string(), |inner| inner.replace("''", "'"));
+            let current_sheet = self.sheet_id(&sheet)?;
+            return self.resolve_name_entry(bare, current_sheet);
+        }
         self.resolve_name_entry_in_scope(name, NameScope::Sheet(current_sheet))
     }
 
