@@ -288,7 +288,11 @@ impl Function for RankEqFn {
                 ExcelError::new_na(),
             )));
         }
-        let target = match coerce_num(&args[0].value()?.into_literal()) {
+        let number = args[0].value()?.into_literal();
+        if let LiteralValue::Error(error) = number {
+            return Ok(crate::traits::CalcValue::Scalar(LiteralValue::Error(error)));
+        }
+        let target = match coerce_num(&number) {
             Ok(n) => n,
             Err(_) => {
                 return Ok(crate::traits::CalcValue::Scalar(LiteralValue::Error(

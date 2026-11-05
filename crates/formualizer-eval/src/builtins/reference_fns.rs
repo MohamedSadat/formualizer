@@ -537,6 +537,9 @@ impl Function for IndexFn {
             let v = args[0].value()?.into_literal();
             let table: Vec<Vec<LiteralValue>> = match v {
                 LiteralValue::Array(rows) => rows,
+                LiteralValue::Error(error) => {
+                    return Ok(crate::traits::CalcValue::Scalar(LiteralValue::Error(error)));
+                }
                 other => vec![vec![other]],
             };
             // Defensive: value() currently materializes omitted indexes as Number(0), so these
