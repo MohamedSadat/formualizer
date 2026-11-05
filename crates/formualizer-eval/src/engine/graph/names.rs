@@ -26,18 +26,20 @@ fn is_valid_excel_name(name: &str) -> bool {
 
     let mut chars = name.chars();
 
-    // First character must be letter, underscore, or backslash
+    // First character must be letter, underscore, or backslash. Excel takes any character beyond
+    // ASCII, curly quotes included.
     if let Some(first) = chars.next()
         && !first.is_alphabetic()
         && first != '_'
         && first != '\\'
+        && first.is_ascii()
     {
         return false;
     }
 
     // Remaining characters must be letters, digits, periods, or underscores
     for c in chars {
-        if !c.is_alphanumeric() && c != '.' && c != '_' {
+        if !c.is_alphanumeric() && c != '.' && c != '_' && c.is_ascii() {
             return false;
         }
     }
