@@ -176,21 +176,30 @@ fn reference_span<'b>(
     ctx: &dyn FunctionContext<'b>,
     rows: bool,
 ) -> Option<(i64, i64)> {
-    match reference {
-        ReferenceType::Cell { .. } => None,
+    let bounds = match reference {
+        ReferenceType::Cell { .. } => return None,
         ReferenceType::Range {
-            start_row: Some(sr),
-            start_col: Some(sc),
-            end_row: Some(er),
-            end_col: Some(ec),
+            start_row,
+            start_col,
+            end_row,
+            end_col,
             ..
         } => {
-            let (from, to) = if rows { (*sr, *er) } else { (*sc, *ec) };
+            if rows {
+                (*start_row).zip(*end_row)
+            } else {
+                (*start_col).zip(*end_col)
+            }
+        }
+        _ => None,
+    };
+    match bounds {
+        Some((from, to)) => {
             let (from, to) = (from.min(to), from.max(to));
             Some((i64::from(from), i64::from(to - from) + 1))
         }
         // An open range covers what the sheet uses, as the ranges it goes with do.
-        _ => {
+        None => {
             let view = ctx
                 .resolve_range_view(reference, ctx.current_sheet())
                 .ok()?;
