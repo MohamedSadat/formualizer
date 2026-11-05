@@ -654,6 +654,10 @@ impl formualizer_eval::function::Function for WorkbookCustomFunction {
         "__WORKBOOK_CUSTOM__"
     }
 
+    fn array_class_name(&self) -> &str {
+        &self.canonical_name
+    }
+
     fn function_salt(&self) -> u64 {
         stable_fn_salt(&self.canonical_name)
     }

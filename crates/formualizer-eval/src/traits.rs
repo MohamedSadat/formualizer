@@ -433,6 +433,45 @@ impl<'a, 'b> ArgumentHandle<'a, 'b> {
         }
     }
 
+    /// What this argument gives to `INDIRECT`, if that is all it is. An array here is an array of
+    /// references, which only a few functions can read one by one.
+    pub(crate) fn indirect_texts(&self) -> Option<Vec<Vec<LiteralValue>>> {
+        let inner = match &self.expr {
+            ArgumentExpr::Ast(node) => match &node.node_type {
+                ASTNodeType::Function { name, args }
+                    if args.len() == 1 && name.eq_ignore_ascii_case("INDIRECT") =>
+                {
+                    ArgumentHandle::new(&args[0], self.interp)
+                }
+                _ => return None,
+            },
+            ArgumentExpr::Arena {
+                id,
+                data_store,
+                sheet_registry,
+            } => {
+                let crate::engine::arena::AstNodeData::Function { name_id, .. } =
+                    data_store.get_node(*id)?
+                else {
+                    return None;
+                };
+                if !data_store
+                    .resolve_ast_string(*name_id)
+                    .eq_ignore_ascii_case("INDIRECT")
+                {
+                    return None;
+                }
+                let args = data_store.get_args(*id)?;
+                let [arg] = args else { return None };
+                ArgumentHandle::new_arena(*arg, self.interp, data_store, sheet_registry)
+            }
+        };
+        match inner.value().ok()?.into_literal() {
+            LiteralValue::Array(rows) => Some(rows),
+            _ => None,
+        }
+    }
+
     /// The one value this argument gives where a formula can only use one: `@`.
     pub(crate) fn one_value(&self) -> Result<LiteralValue, ExcelError> {
         Ok(self.interp.eval_implicit_intersection_calc(self.value()?))

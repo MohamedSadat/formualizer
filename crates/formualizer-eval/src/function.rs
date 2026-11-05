@@ -366,10 +366,20 @@ fn lift_over_arrays<'a, 'b, 'c, F: Function + ?Sized>(
     if args.iter().all(|arg| arg.is_one_value()) {
         return None;
     }
-    let name = function.name();
+    let name = function.array_class_name();
     let mut arrays: smallvec::SmallVec<[(usize, Vec<Vec<LiteralValue>>); 2]> =
         smallvec::SmallVec::new();
+    let mut references: smallvec::SmallVec<[usize; 2]> = smallvec::SmallVec::new();
     for (at, arg) in args.iter().enumerate() {
+        if crate::array_params::reads_references_one_by_one(name, at) {
+            if let Some(texts) = arg.indirect_texts() {
+                if texts.len() * texts.first().map_or(0, Vec::len) > 1 {
+                    arrays.push((at, texts));
+                    references.push(at);
+                }
+            }
+            continue;
+        }
         if arg.is_one_value() || !crate::array_params::lifts_at(name, at) {
             continue;
         }
@@ -427,7 +437,19 @@ fn lift_over_arrays<'a, 'b, 'c, F: Function + ?Sized>(
                     let value = values.get(from_row).and_then(|line| line.get(from_col));
                     missing |= value.is_none();
                     let literal = value.cloned().unwrap_or_else(not_available);
-                    (*at, ASTNode::new(ASTNodeType::Literal(literal), None))
+                    let node = ASTNode::new(ASTNodeType::Literal(literal), None);
+                    let node = if references.contains(at) {
+                        ASTNode::new(
+                            ASTNodeType::Function {
+                                name: "INDIRECT".to_string(),
+                                args: vec![node],
+                            },
+                            None,
+                        )
+                    } else {
+                        node
+                    };
+                    (*at, node)
                 })
                 .collect();
             if missing {

@@ -527,6 +527,24 @@ pub fn param_class(name: &str, at: usize) -> Option<ParamClass> {
     Some(class_in(params, at))
 }
 
+/// Whether a function reads an array of references given to this reference parameter one by one, as
+/// `SUMIF(INDIRECT({"A!A:A","B!A:A"}),1)` does for a sum over sheets. Most functions can't.
+pub(crate) fn reads_references_one_by_one(name: &str, at: usize) -> bool {
+    matches!(param_class(name, at), Some(ParamClass::Reference))
+        && matches!(
+            name,
+            "SUMIF"
+                | "COUNTIF"
+                | "AVERAGEIF"
+                | "SUMIFS"
+                | "COUNTIFS"
+                | "AVERAGEIFS"
+                | "MAXIFS"
+                | "MINIFS"
+                | "SUBTOTAL"
+        )
+}
+
 /// Whether a function runs once for each value of an array given to a single-value parameter.
 /// `IF` and those like it deal with arrays themselves, and `INDEX` has its own rules.
 pub(crate) fn lifts_at(name: &str, at: usize) -> bool {
