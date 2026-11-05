@@ -19494,6 +19494,44 @@ where
                             {
                                 return self.resolve_range_view(external, current_sheet);
                             }
+                            // A name that stands for a reference or an array reads it each time,
+                            // as its vertex holds one value.
+                            let gives_many = match &ast.node_type {
+                                ASTNodeType::Reference { .. } | ASTNodeType::Array(_) => true,
+                                ASTNodeType::Function { name, .. } => {
+                                    crate::function_registry::get("", name).is_some_and(
+                                        |function| {
+                                            function.caps().intersects(
+                                                crate::function::FnCaps::RETURNS_REFERENCE
+                                                    | crate::function::FnCaps::MAY_SPILL,
+                                            )
+                                        },
+                                    )
+                                }
+                                _ => false,
+                            };
+                            if gives_many {
+                                let sheet_id = self
+                                    .graph
+                                    .sheet_id(current_sheet)
+                                    .ok_or_else(|| ExcelError::new(ExcelErrorKind::Ref))?;
+                                let sheet_name = self.graph.sheet_name(sheet_id);
+                                let cell = self.graph.make_cell_ref(sheet_name, 0, 0);
+                                let interpreter =
+                                    Interpreter::new_with_cell(self, sheet_name, cell)
+                                        .with_resolved_functions(&self.resolved_functions)
+                                        .with_arena_cells(self);
+                                return Ok(match interpreter.evaluate_ast(ast)? {
+                                    crate::traits::CalcValue::Range(view) => view,
+                                    other => {
+                                        let rows = match other.into_literal() {
+                                            LiteralValue::Array(rows) => rows,
+                                            value => vec![vec![value]],
+                                        };
+                                        RangeView::from_owned_rows(rows, self.config.date_system)
+                                    }
+                                });
+                            }
                             if let Some(value) = self.graph.get_value(named.vertex) {
                                 return Ok(RangeView::from_owned_rows(
                                     vec![vec![value]],
