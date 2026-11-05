@@ -1794,13 +1794,13 @@
     },
     {
       "formula": "=IMEXP(\"3+4i\")",
-      "result": "-13.128783081462158-15.200784463067954i",
+      "result": "-13.1287830814622-15.200784463068i",
       "result_type": "str",
       "description": "IMEXP exponential of complex number"
     },
     {
       "formula": "=IMEXP(\"i\")",
-      "result": "0.5403023058681398+0.8414709848078965i",
+      "result": "0.54030230586814+0.841470984807897i",
       "result_type": "str",
       "description": "IMEXP exponential of i (e^i)"
     },
@@ -1812,7 +1812,7 @@
     },
     {
       "formula": "=IMLN(\"3+4i\")",
-      "result": "1.6094379124341003+0.9272952180016122i",
+      "result": "1.6094379124341+0.927295218001612i",
       "result_type": "str",
       "description": "IMLN natural log of complex number"
     },
@@ -1836,7 +1836,7 @@
     },
     {
       "formula": "=IMLOG10(\"3+4i\")",
-      "result": "0.6989700043360187+0.4027191962733731i",
+      "result": "0.698970004336019+0.402719196273373i",
       "result_type": "str",
       "description": "IMLOG10 base-10 log of complex number"
     },
@@ -1854,7 +1854,7 @@
     },
     {
       "formula": "=IMLOG2(\"3+4i\")",
-      "result": "2.321928094887362+1.3378042124509761i",
+      "result": "2.32192809488736+1.33780421245098i",
       "result_type": "str",
       "description": "IMLOG2 base-2 log of complex number"
     },
@@ -1902,13 +1902,13 @@
     },
     {
       "formula": "=IMSIN(\"3+4i\")",
-      "result": "3.853738037919377-27.016813258003932i",
+      "result": "3.85373803791938-27.0168132580039i",
       "result_type": "str",
       "description": "IMSIN sine of complex number"
     },
     {
       "formula": "=IMSIN(\"i\")",
-      "result": "1.1752011936438014i",
+      "result": "1.1752011936438i",
       "result_type": "str",
       "description": "IMSIN sine of i"
     },
@@ -1920,13 +1920,13 @@
     },
     {
       "formula": "=IMCOS(\"3+4i\")",
-      "result": "-27.034945603074224-3.851153334811777i",
+      "result": "-27.0349456030742-3.85115333481178i",
       "result_type": "str",
       "description": "IMCOS cosine of complex number"
     },
     {
       "formula": "=IMCOS(\"i\")",
-      "result": "1.5430806348152437",
+      "result": "1.54308063481524",
       "result_type": "str",
       "description": "IMCOS cosine of i (cosh(1))"
     },
@@ -2424,35 +2424,35 @@
     },
     {
       "formula": "=GROUPBY(A1:A5,B1:B5,\"SUM\",0)",
-      "result": [["A", 80], ["B", 70]],
+      "result": [["A", 80], ["B", 70], ["Total", 150]],
       "result_type": "array",
       "description": "GROUPBY sum with no headers",
       "context": {"A1": "A", "A2": "A", "A3": "B", "A4": "B", "A5": "A", "B1": 10, "B2": 20, "B3": 30, "B4": 40, "B5": 50}
     },
     {
       "formula": "=GROUPBY(A1:A5,B1:B5,\"COUNT\",0)",
-      "result": [["A", 3], ["B", 2]],
+      "result": [["A", 3], ["B", 2], ["Total", 5]],
       "result_type": "array",
       "description": "GROUPBY count with no headers",
       "context": {"A1": "A", "A2": "A", "A3": "B", "A4": "B", "A5": "A", "B1": 10, "B2": 20, "B3": 30, "B4": 40, "B5": 50}
     },
     {
       "formula": "=GROUPBY(A1:A5,B1:B5,\"AVERAGE\",0)",
-      "result": [["A", 26.666666666666668], ["B", 35]],
+      "result": [["A", 26.666666666666668], ["B", 35], ["Total", 30]],
       "result_type": "array",
       "description": "GROUPBY average with no headers",
       "context": {"A1": "A", "A2": "A", "A3": "B", "A4": "B", "A5": "A", "B1": 10, "B2": 20, "B3": 30, "B4": 40, "B5": 50}
     },
     {
       "formula": "=GROUPBY(A1:A5,B1:B5,\"MAX\",0)",
-      "result": [["A", 50], ["B", 40]],
+      "result": [["A", 50], ["B", 40], ["Total", 50]],
       "result_type": "array",
       "description": "GROUPBY max with no headers",
       "context": {"A1": "A", "A2": "A", "A3": "B", "A4": "B", "A5": "A", "B1": 10, "B2": 20, "B3": 30, "B4": 40, "B5": 50}
     },
     {
       "formula": "=GROUPBY(A1:A5,B1:B5,\"MIN\",0)",
-      "result": [["A", 10], ["B", 30]],
+      "result": [["A", 10], ["B", 30], ["Total", 10]],
       "result_type": "array",
       "description": "GROUPBY min with no headers",
       "context": {"A1": "A", "A2": "A", "A3": "B", "A4": "B", "A5": "A", "B1": 10, "B2": 20, "B3": 30, "B4": 40, "B5": 50}

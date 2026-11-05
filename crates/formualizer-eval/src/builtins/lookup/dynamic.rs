@@ -1944,7 +1944,8 @@ impl Function for GroupByFn {
                 _ => 0,
             }
         } else {
-            0
+            // A grand total unless told otherwise, as in Excel.
+            1
         };
 
         let sort_order = if args.len() >= 6 {
@@ -1954,7 +1955,8 @@ impl Function for GroupByFn {
                 _ => 0,
             }
         } else {
-            0
+            // In order of the row fields unless told otherwise.
+            1
         };
 
         let (rf_rows, rf_cols) = row_fields_view.dims();
@@ -2071,8 +2073,8 @@ impl Function for GroupByFn {
         // Add grand total if requested
         if total_depth >= 1 {
             let mut total_row: Vec<LiteralValue> = Vec::new();
-            // Empty cells for row fields (except first which says "Grand Total")
-            total_row.push(LiteralValue::Text("Grand Total".to_string()));
+            // Empty cells for row fields (except first which says "Total")
+            total_row.push(LiteralValue::Text("Total".to_string()));
             for _ in 1..rf_cols {
                 total_row.push(LiteralValue::Empty);
             }
