@@ -195,12 +195,11 @@ impl Function for LookupFn {
             return Ok(CalcValue::Scalar(LiteralValue::Error(e)));
         }
 
-        // A blank cell to look up finds nothing.
-        if matches!(lookup_value, LiteralValue::Empty) {
-            return Ok(CalcValue::Scalar(LiteralValue::Error(ExcelError::new(
-                ExcelErrorKind::Na,
-            ))));
-        }
+        // A blank cell to look up is 0.
+        let lookup_value = match lookup_value {
+            LiteralValue::Empty => LiteralValue::Number(0.0),
+            other => other,
+        };
 
         let has_result_vector = args.len() >= 3;
 
@@ -319,10 +318,11 @@ fn flatten_1d(data: &[Vec<LiteralValue>], rows: usize, cols: usize) -> (Vec<Lite
         (data[0].clone(), true)
     } else if cols == 1 {
         (data.iter().map(|r| r[0].clone()).collect(), false)
+    } else if cols > rows {
+        // A block is read by its first row or column, as the array form picks them.
+        (data[0].clone(), true)
     } else {
-        // Multi-dimensional – flatten row-major (uncommon for LOOKUP but
-        // required for robustness).
-        (data.iter().flat_map(|r| r.iter().cloned()).collect(), false)
+        (data.iter().map(|r| r[0].clone()).collect(), false)
     }
 }
 

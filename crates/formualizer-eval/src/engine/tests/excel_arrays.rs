@@ -251,8 +251,13 @@ fn isformula_and_formulatext_see_the_formula() {
     e.set_cell_value("Sheet1", 1, 1, number(1.0)).unwrap();
     e.set_cell_formula("Sheet1", 2, 1, parse("=_xlfn._xlws.SORT(A1)").unwrap())
         .unwrap();
-    e.set_cell_formula("Sheet1", 3, 1, parse("=SUM(_xlfn.ANCHORARRAY(A2))").unwrap())
-        .unwrap();
+    e.set_cell_formula(
+        "Sheet1",
+        3,
+        1,
+        parse("=SUM(_xlfn.ANCHORARRAY(A2))").unwrap(),
+    )
+    .unwrap();
     e.set_cell_formula("Sheet1", 1, 2, parse("=ISFORMULA(A1)").unwrap())
         .unwrap();
     e.set_cell_formula("Sheet1", 2, 2, parse("=ISFORMULA(A2)").unwrap())
@@ -297,8 +302,8 @@ fn lookup_finds_the_last_match_past_errors() {
         evaluated(with_data(), "=LOOKUP(2,1/(A1:A3=\"x\"),B1:B3)"),
         number(3.0)
     );
-    let LiteralValue::Error(error) = evaluated(with_data(), "=LOOKUP(Z9,B1:B3)") else {
-        panic!("a blank finds nothing");
+    let LiteralValue::Error(error) = evaluated(with_data(), "=LOOKUP(Z9,A1:A3)") else {
+        panic!("a blank is 0, and there are no numbers here");
     };
     assert_eq!(error.kind, ExcelErrorKind::Na);
 }
