@@ -14,7 +14,7 @@
 //!   * If width > height  → search the first *row*, return from the last *row*.
 //!   * Otherwise          → search the first *column*, return from the last *column*.
 
-use super::lookup_utils::cmp_for_lookup;
+use super::lookup_utils::{SearchedVector, cmp_for_lookup};
 use crate::args::{ArgSchema, CoercionPolicy, ShapeKind};
 use crate::engine::DateSystem;
 use crate::function::Function;
@@ -30,20 +30,24 @@ fn approx_match_ascending(
     needle: &LiteralValue,
     date_system: DateSystem,
 ) -> Option<usize> {
-    if slice.is_empty() {
-        return None;
-    }
+    // Blanks, errors and values of another type are skipped, so that the common
+    // `LOOKUP(2,1/(A1:A9="x"),B1:B9)` finds the last row that matched.
+    let searched = SearchedVector::new(slice, needle, date_system).ok()?;
     let mut lo: usize = 0;
-    let mut hi: usize = slice.len();
+    let mut hi: usize = searched.len();
     while lo < hi {
         let mid = (lo + hi) / 2;
-        match cmp_for_lookup(&slice[mid], needle, date_system) {
+        match cmp_for_lookup(searched.get(mid), needle, date_system) {
             Some(c) if c > 0 => hi = mid,
             Some(_) => lo = mid + 1,
             None => hi = mid,
         }
     }
-    if lo == 0 { None } else { Some(lo - 1) }
+    if lo == 0 {
+        None
+    } else {
+        Some(searched.original_position(lo - 1))
+    }
 }
 
 /// Searches for a value and returns a corresponding value from another range.
@@ -189,6 +193,13 @@ impl Function for LookupFn {
         let lookup_value = args[0].value()?.into_literal();
         if let LiteralValue::Error(e) = lookup_value {
             return Ok(CalcValue::Scalar(LiteralValue::Error(e)));
+        }
+
+        // A blank cell to look up finds nothing.
+        if matches!(lookup_value, LiteralValue::Empty) {
+            return Ok(CalcValue::Scalar(LiteralValue::Error(ExcelError::new(
+                ExcelErrorKind::Na,
+            ))));
         }
 
         let has_result_vector = args.len() >= 3;
