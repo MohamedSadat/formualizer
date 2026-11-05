@@ -2877,10 +2877,15 @@ fn clean_float(val: f64) -> f64 {
 }
 
 /// Format a complex number as a string
+/// To 15 significant digits, which is what Excel writes in a complex number's text.
+fn to_excel_digits(val: f64) -> f64 {
+    format!("{val:.14e}").parse().unwrap_or(val)
+}
+
 fn format_complex(real: f64, imag: f64, suffix: char) -> String {
     // Clean up floating point noise
-    let real = clean_float(real);
-    let imag = clean_float(imag);
+    let real = to_excel_digits(clean_float(real));
+    let imag = to_excel_digits(clean_float(imag));
 
     // Handle special cases for cleaner output
     let real_is_zero = real.abs() < 1e-15;
