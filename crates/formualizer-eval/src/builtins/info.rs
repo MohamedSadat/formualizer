@@ -660,16 +660,21 @@ impl Function for IsFormulaFn {
     fn eval<'a, 'b, 'c>(
         &self,
         args: &'c [ArgumentHandle<'a, 'b>],
-        _ctx: &dyn FunctionContext<'b>,
+        ctx: &dyn FunctionContext<'b>,
     ) -> Result<crate::traits::CalcValue<'b>, ExcelError> {
         if args.len() != 1 {
             return Ok(crate::traits::CalcValue::Scalar(LiteralValue::Error(
                 ExcelError::new_value(),
             )));
         }
-        // Formula provenance metadata is not tracked yet, so ISFORMULA currently returns FALSE.
+        let holds_formula = args[0]
+            .as_reference_or_eval()
+            .ok()
+            .and_then(|reference| ctx.inspect_reference(&reference).ok().flatten())
+            .and_then(|info| info.first_cell)
+            .is_some_and(|cell| matches!(ctx.formula_text_at_cell(cell), Ok(Some(_))));
         Ok(crate::traits::CalcValue::Scalar(LiteralValue::Boolean(
-            false,
+            holds_formula,
         )))
     }
 }
