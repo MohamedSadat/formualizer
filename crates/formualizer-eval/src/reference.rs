@@ -148,6 +148,56 @@ type SheetBounds = (Option<String>, (u32, u32, u32, u32));
 /// Supports combining Cell:Cell, Cell:Range (and Range:Cell), and Range:Range on the same sheet.
 /// Returns #REF! for cross-sheet combinations or incompatible shapes, and
 /// #N/IMPL! when either endpoint is a name (name endpoints are not resolved yet).
+/// The cells two references have in common: `A1:B3 B2:C4` is `B2:B3`. `#NULL!` if there are none.
+pub fn intersect_references(
+    a: &ReferenceType,
+    b: &ReferenceType,
+) -> Result<ReferenceType, ExcelError> {
+    fn bounds(reference: &ReferenceType) -> Option<(Option<&str>, u32, u32, u32, u32)> {
+        match reference {
+            ReferenceType::Cell {
+                sheet, row, col, ..
+            } => Some((sheet.as_deref(), *row, *col, *row, *col)),
+            ReferenceType::Range {
+                sheet,
+                start_row,
+                start_col,
+                end_row,
+                end_col,
+                ..
+            } => Some((
+                sheet.as_deref(),
+                start_row.unwrap_or(1),
+                start_col.unwrap_or(1),
+                end_row.unwrap_or(1_048_576),
+                end_col.unwrap_or(16_384),
+            )),
+            _ => None,
+        }
+    }
+    let (Some(a), Some(b)) = (bounds(a), bounds(b)) else {
+        return Err(ExcelError::new(ExcelErrorKind::NImpl)
+            .with_message("Intersection of a name or a table"));
+    };
+    let null = || ExcelError::new(ExcelErrorKind::Null);
+    if let (Some(left), Some(right)) = (a.0, b.0) {
+        if !left.eq_ignore_ascii_case(right) {
+            return Err(null());
+        }
+    }
+    let sheet = a.0.or(b.0).map(str::to_string);
+    let (top, left) = (a.1.max(b.1), a.2.max(b.2));
+    let (bottom, right) = (a.3.min(b.3), a.4.min(b.4));
+    if top > bottom || left > right {
+        return Err(null());
+    }
+    Ok(if top == bottom && left == right {
+        ReferenceType::cell(sheet, top, left)
+    } else {
+        ReferenceType::range(sheet, Some(top), Some(left), Some(bottom), Some(right))
+    })
+}
+
 pub fn combine_references(
     a: &ReferenceType,
     b: &ReferenceType,

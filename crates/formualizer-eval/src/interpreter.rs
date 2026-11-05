@@ -634,6 +634,11 @@ impl<'a> Interpreter<'a> {
                 let rref = self.evaluate_ast_as_reference(right)?;
                 crate::reference::combine_references(&lref, &rref)
             }
+            ASTNodeType::BinaryOp { op, left, right } if *op == BinaryOperator::Intersection => {
+                let lref = self.evaluate_ast_as_reference(left)?;
+                let rref = self.evaluate_ast_as_reference(right)?;
+                crate::reference::intersect_references(&lref, &rref)
+            }
             ASTNodeType::UnaryOp { op, expr } if *op == UnaryOperator::Spill => {
                 self.ast_spill_reference(expr)
             }
@@ -1267,6 +1272,21 @@ impl<'a> Interpreter<'a> {
                         Err(e) => Ok(crate::traits::CalcValue::Scalar(LiteralValue::Error(e))),
                     };
                 }
+                if op == BinaryOperator::Intersection {
+                    let left =
+                        self.evaluate_arena_ast_as_reference(*left_id, data_store, sheet_registry)?;
+                    let right = self.evaluate_arena_ast_as_reference(
+                        *right_id,
+                        data_store,
+                        sheet_registry,
+                    )?;
+                    return self.intersection_value(&left, &right);
+                }
+                if op == BinaryOperator::Union {
+                    let left = self.evaluate_arena_ast(*left_id, data_store, sheet_registry)?;
+                    let right = self.evaluate_arena_ast(*right_id, data_store, sheet_registry)?;
+                    return Ok(self.union_value(left, right));
+                }
 
                 let left_calc = self.evaluate_arena_ast(*left_id, data_store, sheet_registry)?;
                 let left_format = left_calc.format_id();
@@ -1819,6 +1839,16 @@ impl<'a> Interpreter<'a> {
         left_node: &ASTNode,
         right_node: &ASTNode,
     ) -> Result<crate::traits::CalcValue<'a>, ExcelError> {
+        if op == BinaryOperator::Intersection {
+            let left = self.evaluate_ast_as_reference(left_node)?;
+            let right = self.evaluate_ast_as_reference(right_node)?;
+            return self.intersection_value(&left, &right);
+        }
+        if op == BinaryOperator::Union {
+            let left = self.evaluate_ast(left_node)?;
+            let right = self.evaluate_ast(right_node)?;
+            return Ok(self.union_value(left, right));
+        }
         let left_calc = self.evaluate_ast(left_node)?;
         let left_format = left_calc.format_id();
         let left = left_calc.into_literal();
@@ -1835,6 +1865,38 @@ impl<'a> Interpreter<'a> {
             };
         }
         self.apply_binary_op(op, left, left_format, right, right_format)
+    }
+
+    /// What `A1:B3 B2:C4` reads.
+    fn intersection_value(
+        &self,
+        left: &ReferenceType,
+        right: &ReferenceType,
+    ) -> Result<crate::traits::CalcValue<'a>, ExcelError> {
+        match crate::reference::intersect_references(left, right) {
+            Ok(reference) => self.eval_reference_to_calc(&reference),
+            Err(error) => Ok(crate::traits::CalcValue::Scalar(LiteralValue::Error(error))),
+        }
+    }
+
+    /// What `(A1:A3,C1,D2:E2)` reads: all the cells, one after the other.
+    fn union_value(
+        &self,
+        left: crate::traits::CalcValue<'a>,
+        right: crate::traits::CalcValue<'a>,
+    ) -> crate::traits::CalcValue<'a> {
+        let mut cells = Vec::new();
+        for side in [left, right] {
+            match side.into_literal() {
+                LiteralValue::Array(rows) => cells.extend(rows.into_iter().flatten()),
+                other => cells.push(other),
+            }
+        }
+        let rows = cells.into_iter().map(|cell| vec![cell]).collect();
+        crate::traits::CalcValue::Range(crate::engine::range_view::RangeView::from_owned_rows(
+            rows,
+            self.context.date_system(),
+        ))
     }
 
     /* ===================  function calls  =================== */
