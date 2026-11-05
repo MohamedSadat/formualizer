@@ -11,6 +11,38 @@ use std::f64::consts::PI;
 
 /* ─────────────────────────── TRIG: circular ────────────────────────── */
 
+/// How far `x` is from the nearest multiple of pi/2 when it is all but on it, with that multiple.
+/// Excel's SIN and COS use the processor's own instructions, which reduce an angle by pi to 66 bits
+/// and not by the true pi. That only shows where the result is nothing but the remainder, as in
+/// `SIN(PI())`, which Excel gives as 1.22514845490862E-16.
+fn off_an_axis(x: f64) -> Option<(i64, f64)> {
+    const HALF_PI: f64 = std::f64::consts::FRAC_PI_2;
+    // What is left of pi/2 to 66 bits after `HALF_PI`.
+    const HALF_PI_REST: f64 = 6.1257422745431e-17;
+    let quarter_turns = (x / HALF_PI).round();
+    if quarter_turns == 0.0 || quarter_turns.abs() > 1e9 {
+        return None;
+    }
+    let off = (-quarter_turns).mul_add(HALF_PI, x) - quarter_turns * HALF_PI_REST;
+    (off.abs() < 1e-9).then_some((quarter_turns as i64, off))
+}
+
+fn sin_as_excel(x: f64) -> f64 {
+    match off_an_axis(x) {
+        Some((turns, off)) if turns.rem_euclid(4) == 0 => off,
+        Some((turns, off)) if turns.rem_euclid(4) == 2 => -off,
+        _ => x.sin(),
+    }
+}
+
+fn cos_as_excel(x: f64) -> f64 {
+    match off_an_axis(x) {
+        Some((turns, off)) if turns.rem_euclid(4) == 1 => -off,
+        Some((turns, off)) if turns.rem_euclid(4) == 3 => off,
+        _ => x.cos(),
+    }
+}
+
 #[derive(Debug)]
 pub struct SinFn;
 /// Returns the sine of an angle in radians.
@@ -69,7 +101,7 @@ impl Function for SinFn {
         args: &'c [ArgumentHandle<'a, 'b>],
         ctx: &dyn FunctionContext<'b>,
     ) -> Result<crate::traits::CalcValue<'b>, ExcelError> {
-        unary_numeric_elementwise(args, ctx, |x| Ok(LiteralValue::Number(x.sin())))
+        unary_numeric_elementwise(args, ctx, |x| Ok(LiteralValue::Number(sin_as_excel(x))))
     }
 }
 
@@ -204,7 +236,7 @@ impl Function for CosFn {
         args: &'c [ArgumentHandle<'a, 'b>],
         ctx: &dyn FunctionContext<'b>,
     ) -> Result<crate::traits::CalcValue<'b>, ExcelError> {
-        unary_numeric_elementwise(args, ctx, |x| Ok(LiteralValue::Number(x.cos())))
+        unary_numeric_elementwise(args, ctx, |x| Ok(LiteralValue::Number(cos_as_excel(x))))
     }
 }
 
