@@ -1298,7 +1298,47 @@ fn hyperlink_text<'a, 'b>(
     }))
 }
 
+/// `@` in a file's formula: the one value of what it is given.
+#[derive(Debug)]
+pub struct SingleFn;
+
+impl Function for SingleFn {
+    fn caps(&self) -> FnCaps {
+        FnCaps::PURE
+    }
+    fn name(&self) -> &'static str {
+        "SINGLE"
+    }
+    fn min_args(&self) -> usize {
+        1
+    }
+    fn arg_schema(&self) -> &'static [ArgSchema] {
+        use once_cell::sync::Lazy;
+        static SCHEMA: Lazy<Vec<ArgSchema>> = Lazy::new(|| vec![ArgSchema::any()]);
+        &SCHEMA
+    }
+    fn dispatch<'a, 'b, 'c>(
+        &self,
+        args: &'c [ArgumentHandle<'a, 'b>],
+        ctx: &dyn FunctionContext<'b>,
+    ) -> Result<crate::traits::CalcValue<'b>, ExcelError> {
+        self.eval(args, ctx)
+    }
+    fn eval<'a, 'b, 'c>(
+        &self,
+        args: &'c [ArgumentHandle<'a, 'b>],
+        _ctx: &dyn FunctionContext<'b>,
+    ) -> Result<crate::traits::CalcValue<'b>, ExcelError> {
+        let value = match args {
+            [arg] => arg.one_value().unwrap_or_else(LiteralValue::Error),
+            _ => LiteralValue::Error(ExcelError::new(ExcelErrorKind::Value)),
+        };
+        Ok(crate::traits::CalcValue::Scalar(value))
+    }
+}
+
 pub fn register_builtins() {
+    crate::function_registry::register_builtin(std::sync::Arc::new(SingleFn));
     crate::function_registry::register_builtin(std::sync::Arc::new(IndexFn));
     crate::function_registry::register_builtin(std::sync::Arc::new(OffsetFn));
     crate::function_registry::register_builtin(std::sync::Arc::new(IndirectFn));
