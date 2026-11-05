@@ -974,6 +974,10 @@ pub struct EvalConfig {
     /// oracle). Values are identical either way.
     pub family_execution: bool,
 
+    /// A formula in a circular chain evaluates to 0 instead of `#CIRC!`, as Excel's do when
+    /// iterative calculation is off, and what reads it carries on from there.
+    pub circular_as_zero: bool,
+
     /// Program 2 range kernels (tier 3) inside family execution: windowed
     /// aggregates reduce each member's slice without per-call range
     /// resolution. `false` keeps tier 1 for every run. Values are identical.
@@ -1056,6 +1060,7 @@ impl Default for EvalConfig {
             max_formula_plane_cache_bytes: 64 * 1024 * 1024,
             lookup_index_cache_max_bytes: 64 * 1024 * 1024,
             family_execution: true,
+            circular_as_zero: false,
             family_kernels: true,
             family_lift: true,
             formula_compression: true,

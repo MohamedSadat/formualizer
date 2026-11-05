@@ -265,6 +265,13 @@ impl Function for MatchFn {
             0
         };
         let arr_ref = args[1].as_reference_or_eval().ok();
+        // An error where the list should be is the answer, rather than not finding anything.
+        if arr_ref.is_none()
+            && let Ok(value) = args[1].value()
+            && let LiteralValue::Error(e) = value.into_literal()
+        {
+            return Ok(crate::traits::CalcValue::Scalar(LiteralValue::Error(e)));
+        }
         if let Some(r) = arr_ref {
             let current_sheet = ctx.current_sheet();
             match ctx.resolve_range_view(&r, current_sheet) {

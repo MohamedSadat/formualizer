@@ -20,6 +20,35 @@ pub fn format_a1_sheet_name(name: &str) -> Cow<'_, str> {
 /// Return whether canonical A1 rendering must quote a sheet name.
 ///
 /// This is the allocation-free predicate used by [`format_a1_sheet_name`].
+/// Whether a name would read as a cell, in A1 or R1C1 style, such as `AB12` or `R2C3`.
+fn a1_name_reads_as_reference(name: &str) -> bool {
+    let upper = name.to_ascii_uppercase();
+    let bytes = upper.as_bytes();
+    let letters = bytes.iter().take_while(|b| b.is_ascii_uppercase()).count();
+    let digits = bytes[letters..].iter().take_while(|b| b.is_ascii_digit()).count();
+    if letters + digits == bytes.len() && (1..=3).contains(&letters) && digits > 0 {
+        let col = bytes[..letters]
+            .iter()
+            .fold(0u32, |col, b| col * 26 + u32::from(b - b'A') + 1);
+        if col <= 16_384 {
+            return true;
+        }
+    }
+    // R, C, R1, C1 and R1C1.
+    let mut rest = bytes;
+    if let [b'R', tail @ ..] = rest {
+        rest = tail;
+        let count = rest.iter().take_while(|b| b.is_ascii_digit()).count();
+        rest = &rest[count..];
+    }
+    if let [b'C', tail @ ..] = rest {
+        rest = tail;
+        let count = rest.iter().take_while(|b| b.is_ascii_digit()).count();
+        rest = &rest[count..];
+    }
+    rest.is_empty() && !bytes.is_empty()
+}
+
 pub fn a1_sheet_name_needs_quoting(name: &str) -> bool {
     if name.is_empty() {
         return false;
@@ -38,6 +67,10 @@ pub fn a1_sheet_name_needs_quoting(name: &str) -> bool {
             }
             _ => {}
         }
+    }
+
+    if a1_name_reads_as_reference(name) {
+        return true;
     }
 
     matches!(

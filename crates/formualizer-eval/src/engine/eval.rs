@@ -4835,6 +4835,29 @@ where
         Ok(())
     }
 
+    /// Moves or resizes a table, or changes its headers.
+    pub fn update_table(
+        &mut self,
+        name: &str,
+        range: crate::reference::RangeRef,
+        header_row: bool,
+        headers: Vec<String>,
+        totals_row: bool,
+    ) -> Result<(), ExcelError> {
+        self.graph
+            .update_table(name, range, header_row, headers, totals_row)?;
+        self.record_structural_change(StructuralScope::AllSheets);
+        self.mark_topology_edited();
+        Ok(())
+    }
+
+    pub fn delete_table(&mut self, name: &str) -> Result<(), ExcelError> {
+        self.graph.delete_table(name)?;
+        self.record_structural_change(StructuralScope::AllSheets);
+        self.mark_topology_edited();
+        Ok(())
+    }
+
     pub fn define_source_scalar(
         &mut self,
         name: &str,
@@ -13808,8 +13831,8 @@ where
     /// Declare a legacy array formula with a fixed output rectangle after
     /// ingestion and before evaluation. Coordinates are one-based. Replacement,
     /// removal or movement of the formula clears the declaration.
-    /// Single-cell declarations do not register a spill anchor. Requires
-    /// `EvalConfig::family_execution = false` to bypass family memoization.
+    /// Single-cell declarations do not register a spill anchor. Family evaluation leaves such a
+    /// formula to the per-cell path.
     pub fn declare_fixed_array_formula(
         &mut self,
         sheet: &str,
@@ -13818,10 +13841,6 @@ where
         rows: u32,
         cols: u32,
     ) -> Result<(), ExcelError> {
-        if self.config.family_execution {
-            return Err(ExcelError::new(ExcelErrorKind::Ref)
-                .with_message("Fixed arrays require family_execution = false"));
-        }
         if row == 0
             || col == 0
             || rows == 0
@@ -19403,7 +19422,7 @@ where
                                 let asheet = self
                                     .sheet_store()
                                     .sheet(sheet_name)
-                                    .expect("Arrow sheet missing for named cell");
+                                    .ok_or_else(|| ExcelError::new(ExcelErrorKind::Ref))?;
                                 let r0 = cell_ref.coord.row() as usize;
                                 let c0 = cell_ref.coord.col() as usize;
                                 let rv = asheet.range_view(r0, c0, r0, c0);
@@ -19443,7 +19462,7 @@ where
                             let asheet = self
                                 .sheet_store()
                                 .sheet(sheet_name)
-                                .expect("Arrow sheet missing for named range");
+                                .ok_or_else(|| ExcelError::new(ExcelErrorKind::Ref))?;
                             let sr0 = range_ref.start.coord.row() as usize;
                             let sc0 = range_ref.start.coord.col() as usize;
                             let er0 = range_ref.end.coord.row() as usize;
@@ -19497,7 +19516,7 @@ where
                     let asheet = self
                         .sheet_store()
                         .sheet(sheet_name)
-                        .expect("Arrow sheet missing for table reference");
+                        .ok_or_else(|| ExcelError::new(ExcelErrorKind::Ref))?;
 
                     let sr0 = table.range.start.coord.row() as usize;
                     let sc0 = table.range.start.coord.col() as usize;
@@ -19887,10 +19906,14 @@ where
         mut delta: Option<&mut DeltaCollector>,
         dirty_filter: Option<&FxHashSet<VertexId>>,
     ) -> usize {
-        let circ_error = LiteralValue::Error(
-            ExcelError::new(ExcelErrorKind::Circ)
-                .with_message("Circular dependency detected".to_string()),
-        );
+        let circ_error = if self.config.circular_as_zero {
+            LiteralValue::Number(0.0)
+        } else {
+            LiteralValue::Error(
+                ExcelError::new(ExcelErrorKind::Circ)
+                    .with_message("Circular dependency detected".to_string()),
+            )
+        };
         let mut stamped = 0usize;
         for &vertex_id in cycle {
             if let Some(filter) = dirty_filter
@@ -20019,6 +20042,7 @@ where
         }
 
         let task_start = crate::instant::FzInstant::now();
+        let circular_as_zero = self.config.circular_as_zero;
 
         // ── 0. Member order (spec §7.13): cells ascending (sheet, row, col);
         // name vertices after, lexicographic by folded canonical name; any
@@ -20074,10 +20098,14 @@ where
         // members can be neither edge sources nor targets.
         let recordable = cell_refs.len() + name_keys.len();
 
-        let circ_error = LiteralValue::Error(
+        let circ_error = if circular_as_zero {
+            LiteralValue::Number(0.0)
+        } else {
+            LiteralValue::Error(
             ExcelError::new(ExcelErrorKind::Circ)
                 .with_message("Circular dependency detected".to_string()),
-        );
+        )
+        };
 
         // ── 0b. Spec-§4 persistence repair: structural edits clear computed
         // overlays wholesale (`clear_computed_overlay_after_row/_col`), but

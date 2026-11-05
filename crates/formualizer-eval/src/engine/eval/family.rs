@@ -220,6 +220,15 @@ where
             .collect()
     }
 
+    /// Whether any of these is a legacy array, whose result is fitted to its area one by one.
+    fn any_fixed_array(&self, members: &[VertexId]) -> bool {
+        (!self.graph.fixed_array_shapes.is_empty() || !self.graph.fixed_single_arrays.is_empty())
+            && members.iter().any(|vertex| {
+                self.graph.fixed_array_shapes.contains_key(vertex)
+                    || self.graph.fixed_single_arrays.contains(vertex)
+            })
+    }
+
     /// Evaluate the members of a family run (tier 1): one template, one
     /// literal plan and one sheet resolution for the run.
     pub(super) fn evaluate_run_immutable(
@@ -228,7 +237,7 @@ where
         members: &[VertexId],
         shared_memo: Option<&super::memo::SharedMemo>,
     ) -> Vec<LiteralValue> {
-        if !self.config.family_execution {
+        if !self.config.family_execution || self.any_fixed_array(members) {
             return self.evaluate_members_per_cell(members);
         }
         let Ok(store) = self.graph.authority_plan_store() else {
@@ -590,7 +599,11 @@ where
     /// reading the one above (see `Engine::evaluate_chain_lifted`). `None`
     /// leaves the run to the per-cell path, member by member.
     pub(super) fn try_chain_lift(&self, run: LayerRun, members: &[VertexId]) -> Option<Vec<f64>> {
-        if !self.config.family_execution || !self.config.family_lift || members.len() < 2 {
+        if !self.config.family_execution
+            || !self.config.family_lift
+            || members.len() < 2
+            || self.any_fixed_array(members)
+        {
             return None;
         }
         let store = self.graph.authority_plan_store().ok()?;
