@@ -999,6 +999,8 @@ pub struct EvaluationSlice {
     replans: usize,
     /// How many formulas the next piece of a layer holds.
     step: usize,
+    /// Cells whose values changed, for a slice that was asked to keep track.
+    changed: Option<DeltaCollector>,
 }
 
 impl Default for EvaluationSlice {
@@ -1007,6 +1009,7 @@ impl Default for EvaluationSlice {
             pass: None,
             replans: 0,
             step: Self::FIRST_STEP,
+            changed: None,
         }
     }
 }
@@ -1019,6 +1022,25 @@ impl EvaluationSlice {
     pub fn reset(&mut self) {
         self.pass = None;
         self.replans = 0;
+    }
+
+    /// A slice that keeps track of which cells change, for [`Self::take_changed`]. The list is
+    /// what [`Engine::evaluate_all_with_delta`] gives, spills included, across any number of
+    /// calls, and tracking makes each formula a little slower to commit.
+    pub fn tracking() -> Self {
+        Self {
+            changed: Some(DeltaCollector::new(DeltaMode::Cells)),
+            ..Self::default()
+        }
+    }
+
+    /// The cells that changed since the last call. Only a tracking slice has any.
+    pub fn take_changed(&mut self) -> Result<EvalDelta, ExcelError> {
+        match self.changed.as_mut() {
+            Some(collector) => std::mem::replace(collector, DeltaCollector::new(DeltaMode::Cells))
+                .finish_with_policy(EvalDeltaCompatibilityPolicy::Unlimited),
+            None => Ok(EvalDelta::default()),
+        }
     }
 }
 
@@ -17097,14 +17119,67 @@ where
         budget: std::time::Duration,
     ) -> Result<EvaluationSliceResult, ExcelError> {
         self.observe_evaluation_resource_request(EvaluationRequestKind::Full, |engine| {
-            engine.evaluate_slice_unobserved(slice, budget)
+            let mut delta = slice.changed.take();
+            let result = engine.evaluate_slice_unobserved(slice, budget, delta.as_mut());
+            slice.changed = delta;
+            result
         })
+    }
+
+    /// [`Self::evaluate_cells`] that adds what changed to a tracking slice's list.
+    pub fn evaluate_cells_tracked(
+        &mut self,
+        slice: &mut EvaluationSlice,
+        targets: &[(&str, u32, u32)],
+    ) -> Result<(), ExcelError> {
+        if targets.is_empty() {
+            return Ok(());
+        }
+        self.observe_evaluation_resource_request(EvaluationRequestKind::Cells, |engine| {
+            engine.observe_function_semantic_epoch()?;
+            engine.validate_deterministic_mode()?;
+            let typed_targets = engine.legacy_coordinate_targets(targets);
+            let mut delta = slice.changed.take();
+            let result = engine.evaluate_mixed_targets(&typed_targets, delta.as_mut());
+            slice.changed = delta;
+            result.map(|_| ())
+        })
+    }
+
+    /// Every array that has spilled, as its anchor cell and how far it reaches, in rows and
+    /// columns from the anchor (a single row is 1).
+    pub fn spill_areas(&self) -> Vec<(CellRef, u32, u32)> {
+        self.graph
+            .spill_anchor_cells()
+            .into_iter()
+            .filter_map(|(anchor, cells)| {
+                let home = self.graph.get_cell_ref_for_vertex(anchor)?;
+                let (mut rows, mut cols) = (1, 1);
+                for cell in cells {
+                    rows = rows.max(cell.coord.row().saturating_sub(home.coord.row()) + 1);
+                    cols = cols.max(cell.coord.col().saturating_sub(home.coord.col()) + 1);
+                }
+                Some((home, rows, cols))
+            })
+            .collect()
+    }
+
+    /// The cell of every formula, in no useful order. Each formula's text can then be read with
+    /// [`Self::get_cell`], which is how a caller finds what a change to the workbook's shape will
+    /// touch before making it.
+    pub fn formula_cells(&self) -> Vec<CellRef> {
+        self.graph
+            .formula_vertices()
+            .into_iter()
+            .filter_map(|vertex| self.graph.get_cell_ref_for_vertex(vertex))
+            .collect()
     }
 
     fn evaluate_slice_unobserved(
         &mut self,
         slice: &mut EvaluationSlice,
         budget: std::time::Duration,
+        mut delta: Option<&mut DeltaCollector>,
     ) -> Result<EvaluationSliceResult, ExcelError> {
         self.observe_function_semantic_epoch()?;
         let _source_cache = self.source_cache_session();
@@ -17154,7 +17229,12 @@ where
                 }
                 match pass.schedule.units[pass.unit] {
                     ScheduleUnit::Cycle(i) => {
-                        self.handle_cycle_unit(pass.schedule.unit_cycle(i), None, None, None)?;
+                        self.handle_cycle_unit(
+                            pass.schedule.unit_cycle(i),
+                            delta.as_deref_mut(),
+                            None,
+                            None,
+                        )?;
                         progressed = true;
                     }
                     ScheduleUnit::Layer(i) => {
@@ -17171,7 +17251,7 @@ where
                             let started = crate::instant::FzInstant::now();
                             let finished = self.evaluate_layer_units_until(
                                 &piece,
-                                None,
+                                delta.as_deref_mut(),
                                 None,
                                 None,
                                 buffered,
@@ -17240,6 +17320,11 @@ where
         let vertices = self.graph.get_evaluation_vertices();
         self.graph.clear_dirty_flags(&vertices);
         Ok(vertices.len())
+    }
+
+    /// Marks volatile formulas and what reads them dirty, as opening a workbook needs.
+    pub fn mark_volatile_formulas_dirty(&mut self) {
+        self.graph.redirty_volatiles();
     }
 
     /// Marks every formula dirty, as a full recalculation (Ctrl+Alt+F9) needs.

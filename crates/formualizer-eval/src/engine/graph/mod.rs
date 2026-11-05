@@ -5205,6 +5205,13 @@ impl DependencyGraph {
         Some((first, last))
     }
 
+    pub(crate) fn spill_anchor_cells(&self) -> Vec<(VertexId, &[CellRef])> {
+        self.spill_anchor_to_cells
+            .iter()
+            .map(|(anchor, cells)| (*anchor, cells.as_slice()))
+            .collect()
+    }
+
     pub(crate) fn spill_registry_has_anchor(&self, anchor: VertexId) -> bool {
         self.spill_anchor_to_cells.contains_key(&anchor)
     }
