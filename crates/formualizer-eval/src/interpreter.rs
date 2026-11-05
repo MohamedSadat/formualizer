@@ -1669,10 +1669,12 @@ impl<'a> Interpreter<'a> {
                 sheet, row, col, ..
             } => {
                 let sheet_name = sheet.as_deref().unwrap_or(self.current_sheet);
-                match self
-                    .context
-                    .resolve_cell_reference(Some(sheet_name), *row, *col)
-                {
+                match self.context.resolve_cell_reference_value(
+                    Some(sheet_name),
+                    *row,
+                    *col,
+                    sheet_name,
+                ) {
                     Ok(v) => v,
                     Err(e) => LiteralValue::Error(e),
                 }
@@ -1710,7 +1712,10 @@ impl<'a> Interpreter<'a> {
                     std::mem::swap(&mut sc, &mut ec);
                 }
 
-                let pick = if sc == ec {
+                let pick = if sc == ec && sr == er {
+                    // `A1:A1` is one cell, wherever the formula is.
+                    (sr, sc)
+                } else if sc == ec {
                     // Column vector: intersect by row
                     if cur_r1 < sr || cur_r1 > er {
                         return LiteralValue::Error(ExcelError::new(ExcelErrorKind::Value));
@@ -1730,10 +1735,12 @@ impl<'a> Interpreter<'a> {
                     (cur_r1, cur_c1)
                 };
 
-                match self
-                    .context
-                    .resolve_cell_reference(Some(sheet_name), pick.0, pick.1)
-                {
+                match self.context.resolve_cell_reference_value(
+                    Some(sheet_name),
+                    pick.0,
+                    pick.1,
+                    sheet_name,
+                ) {
                     Ok(v) => v,
                     Err(e) => LiteralValue::Error(e),
                 }
