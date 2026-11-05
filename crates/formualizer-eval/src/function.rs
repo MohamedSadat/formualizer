@@ -311,6 +311,10 @@ pub trait Function: Send + Sync + 'static {
                 .map(|result| self.apply_format_propagation(result));
         }
 
+        if let Some(result) = lift_over_arrays(self, args, ctx) {
+            return result;
+        }
+
         // Central argument validation (includes min-arity check)
         {
             use crate::args::{ValidationOptions, validate_and_prepare_inline};
@@ -330,6 +334,115 @@ pub trait Function: Send + Sync + 'static {
         self.eval(args, ctx)
             .map(|result| self.apply_format_propagation(result))
     }
+}
+
+/// Runs a function once for each value of an array given to a single-value parameter. `None` if
+/// there is no such array. What each run gets from other parameters stays as it is, so
+/// `MATCH(A1:A3,B1:B9,0)` searches all of `B1:B9` each time.
+fn lift_over_arrays<'a, 'b, 'c, F: Function + ?Sized>(
+    function: &F,
+    args: &'c [crate::traits::ArgumentHandle<'a, 'b>],
+    ctx: &dyn crate::traits::FunctionContext<'b>,
+) -> Option<Result<crate::traits::CalcValue<'b>, ExcelError>> {
+    use formualizer_parse::parser::{ASTNode, ASTNodeType};
+
+    if args.iter().all(|arg| arg.is_one_value()) {
+        return None;
+    }
+    let name = function.name();
+    let mut arrays: smallvec::SmallVec<[(usize, Vec<Vec<LiteralValue>>); 2]> =
+        smallvec::SmallVec::new();
+    for (at, arg) in args.iter().enumerate() {
+        if arg.is_one_value() || !crate::array_params::lifts_at(name, at) {
+            continue;
+        }
+        let Ok(value) = arg.value() else { return None };
+        // An error before any array ends the call as it would without one, unevaluated arguments
+        // and all. After an array, it goes to every run.
+        if arrays.is_empty()
+            && matches!(
+                &value,
+                crate::traits::CalcValue::Scalar(LiteralValue::Error(_))
+            )
+        {
+            return None;
+        }
+        let many = match &value {
+            crate::traits::CalcValue::Range(view) => {
+                let (rows, cols) = view.dims();
+                rows * cols > 1
+            }
+            crate::traits::CalcValue::Scalar(LiteralValue::Array(rows)) => {
+                rows.len() * rows.first().map_or(0, Vec::len) > 1
+            }
+            _ => false,
+        };
+        if !many {
+            continue;
+        }
+        if let LiteralValue::Array(rows) = value.into_literal() {
+            arrays.push((at, rows));
+        }
+    }
+    if arrays.is_empty() {
+        return None;
+    }
+    let rows = arrays.iter().map(|(_, rows)| rows.len()).max().unwrap_or(0);
+    let cols = arrays
+        .iter()
+        .map(|(_, rows)| rows.first().map_or(0, Vec::len))
+        .max()
+        .unwrap_or(0);
+    let not_available = || LiteralValue::Error(ExcelError::new_na());
+    let mut out = Vec::with_capacity(rows);
+    for row in 0..rows {
+        let mut line = Vec::with_capacity(cols);
+        for col in 0..cols {
+            // A single row or column goes with every row or column of the others, and past the end
+            // of a larger array there is nothing to read.
+            let mut missing = false;
+            let nodes: smallvec::SmallVec<[(usize, ASTNode); 2]> = arrays
+                .iter()
+                .map(|(at, values)| {
+                    let from_row = if values.len() == 1 { 0 } else { row };
+                    let width = values.first().map_or(0, Vec::len);
+                    let from_col = if width == 1 { 0 } else { col };
+                    let value = values.get(from_row).and_then(|line| line.get(from_col));
+                    missing |= value.is_none();
+                    let literal = value.cloned().unwrap_or_else(not_available);
+                    (*at, ASTNode::new(ASTNodeType::Literal(literal), None))
+                })
+                .collect();
+            if missing {
+                line.push(not_available());
+                continue;
+            }
+            let handles: Vec<crate::traits::ArgumentHandle<'_, 'b>> = args
+                .iter()
+                .enumerate()
+                .map(
+                    |(at, arg)| match nodes.iter().find(|(from, _)| *from == at) {
+                        Some((_, node)) => arg.for_literal(node),
+                        None => arg.again(),
+                    },
+                )
+                .collect();
+            let value = match function.dispatch(&handles, ctx) {
+                Ok(value) => value.into_literal(),
+                Err(error) => LiteralValue::Error(error),
+            };
+            line.push(match value {
+                LiteralValue::Array(mut inner) if !inner.is_empty() && !inner[0].is_empty() => {
+                    inner[0].swap_remove(0)
+                }
+                other => other,
+            });
+        }
+        out.push(line);
+    }
+    Some(Ok(crate::traits::CalcValue::Scalar(LiteralValue::Array(
+        out,
+    ))))
 }
 
 #[cfg(test)]

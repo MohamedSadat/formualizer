@@ -1,4 +1,5 @@
 pub mod args;
+pub mod array_params;
 pub mod broadcast;
 pub mod coercion;
 pub mod error_policy;

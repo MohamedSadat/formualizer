@@ -314,6 +314,7 @@ pub enum EvaluatedArg<'a> {
     Range(Box<dyn Range>),
 }
 
+#[derive(Clone, Copy)]
 enum ArgumentExpr<'a> {
     Ast(&'a ASTNode),
     Arena {
@@ -398,6 +399,65 @@ impl<'a, 'b> ArgumentHandle<'a, 'b> {
             interp,
             caches: std::cell::OnceCell::new(),
             cached_value: std::cell::OnceCell::new(),
+        }
+    }
+
+    /// A handle to one value, for running a function once per value of an array.
+    pub(crate) fn for_literal<'x>(&self, node: &'x ASTNode) -> ArgumentHandle<'x, 'b>
+    where
+        'a: 'x,
+    {
+        ArgumentHandle {
+            expr: ArgumentExpr::Ast(node),
+            interp: self.interp,
+            caches: std::cell::OnceCell::new(),
+            cached_value: std::cell::OnceCell::new(),
+        }
+    }
+
+    /// Another handle to the same argument, which keeps what this one has worked out.
+    pub(crate) fn again(&self) -> Self {
+        let cached_value = std::cell::OnceCell::new();
+        if let Some(value) = self.cached_value.get() {
+            let value = match value {
+                Ok(value) => Ok(MemoizedValue::new(value.value())),
+                Err(error) => Err(error.clone()),
+            };
+            let _ = cached_value.set(value);
+        }
+        Self {
+            expr: self.expr,
+            interp: self.interp,
+            caches: std::cell::OnceCell::new(),
+            cached_value,
+        }
+    }
+
+    /// The one value this argument gives where a formula can only use one: `@`.
+    pub(crate) fn one_value(&self) -> Result<LiteralValue, ExcelError> {
+        Ok(self.interp.eval_implicit_intersection_calc(self.value()?))
+    }
+
+    /// Whether this argument can only be one value, whatever it evaluates to.
+    pub(crate) fn is_one_value(&self) -> bool {
+        match &self.expr {
+            ArgumentExpr::Ast(node) => match &node.node_type {
+                ASTNodeType::Literal(value) => !matches!(value, LiteralValue::Array(_)),
+                ASTNodeType::Omitted => true,
+                ASTNodeType::Reference { reference, .. } => {
+                    matches!(reference, ReferenceType::Cell { .. })
+                }
+                _ => false,
+            },
+            ArgumentExpr::Arena { id, data_store, .. } => match data_store.get_node(*id) {
+                Some(crate::engine::arena::AstNodeData::Omitted) => true,
+                Some(crate::engine::arena::AstNodeData::Literal(_)) => true,
+                Some(crate::engine::arena::AstNodeData::Reference { ref_type, .. }) => matches!(
+                    data_store.compact_ref(*ref_type),
+                    crate::engine::arena::CompactRefType::Cell { .. }
+                ),
+                _ => false,
+            },
         }
     }
 
