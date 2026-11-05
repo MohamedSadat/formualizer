@@ -132,7 +132,10 @@ fn at_keeps_a_blank_blank_and_a_single_cell_range_reads_from_anywhere() {
 #[test]
 fn the_intersection_operator_reads_what_two_references_share() {
     assert_eq!(evaluated(with_data(), "=SUM(A1:B2 B2:B3)"), number(-2.0));
-    assert_eq!(evaluated(with_data(), "=Sheet1!B:B Sheet1!3:3"), number(3.0));
+    assert_eq!(
+        evaluated(with_data(), "=Sheet1!B:B Sheet1!3:3"),
+        number(3.0)
+    );
     let LiteralValue::Error(error) = evaluated(with_data(), "=SUM(A1:A2 B1:B2)") else {
         panic!("two references that share nothing are #NULL!");
     };
@@ -224,4 +227,132 @@ fn a_spill_shows_over_an_edit_that_emptied_the_cell() {
         .unwrap();
     e.evaluate_all().unwrap();
     assert_eq!(e.get_cell_value("Sheet1", 11, 20).unwrap(), number(-2.0));
+}
+
+#[test]
+fn iserror_looks_at_what_cant_be_evaluated() {
+    assert_eq!(
+        evaluated(engine(), "=ISERROR(VLOOKUP(\"x\",nosuchname,2,FALSE))"),
+        LiteralValue::Boolean(true)
+    );
+    assert_eq!(
+        evaluated(engine(), "=IF(ISERROR(NoSheet!A1),\"caught\",\"no\")"),
+        text("caught")
+    );
+    assert_eq!(
+        evaluated(engine(), "=ISNA(nosuchname)"),
+        LiteralValue::Boolean(false)
+    );
+}
+
+#[test]
+fn isformula_and_formulatext_see_the_formula() {
+    let mut e = engine();
+    e.set_cell_value("Sheet1", 1, 1, number(1.0)).unwrap();
+    e.set_cell_formula("Sheet1", 2, 1, parse("=_xlfn._xlws.SORT(A1)").unwrap())
+        .unwrap();
+    e.set_cell_formula("Sheet1", 3, 1, parse("=SUM(_xlfn.ANCHORARRAY(A2))").unwrap())
+        .unwrap();
+    e.set_cell_formula("Sheet1", 1, 2, parse("=ISFORMULA(A1)").unwrap())
+        .unwrap();
+    e.set_cell_formula("Sheet1", 2, 2, parse("=ISFORMULA(A2)").unwrap())
+        .unwrap();
+    e.set_cell_formula("Sheet1", 2, 3, parse("=FORMULATEXT(A2)").unwrap())
+        .unwrap();
+    e.set_cell_formula("Sheet1", 3, 3, parse("=FORMULATEXT(A3)").unwrap())
+        .unwrap();
+    e.evaluate_all().unwrap();
+    assert_eq!(
+        e.get_cell_value("Sheet1", 1, 2).unwrap(),
+        LiteralValue::Boolean(false)
+    );
+    assert_eq!(
+        e.get_cell_value("Sheet1", 2, 2).unwrap(),
+        LiteralValue::Boolean(true)
+    );
+    let LiteralValue::Text(sort) = e.get_cell_value("Sheet1", 2, 3).unwrap() else {
+        panic!("FORMULATEXT gives text");
+    };
+    assert!(sort.eq_ignore_ascii_case("=SORT(A1)"), "{sort}");
+    let LiteralValue::Text(sum) = e.get_cell_value("Sheet1", 3, 3).unwrap() else {
+        panic!("FORMULATEXT gives text");
+    };
+    assert!(sum.eq_ignore_ascii_case("=SUM(A2#)"), "{sum}");
+}
+
+#[test]
+fn cell_gives_the_sheet_after_the_bracket() {
+    assert_eq!(
+        evaluated(
+            with_data(),
+            "=MID(CELL(\"filename\",A1),FIND(\"]\",CELL(\"filename\",A1))+1,99)"
+        ),
+        text("Sheet1")
+    );
+}
+
+#[test]
+fn lookup_finds_the_last_match_past_errors() {
+    assert_eq!(
+        evaluated(with_data(), "=LOOKUP(2,1/(A1:A3=\"x\"),B1:B3)"),
+        number(3.0)
+    );
+    let LiteralValue::Error(error) = evaluated(with_data(), "=LOOKUP(Z9,B1:B3)") else {
+        panic!("a blank finds nothing");
+    };
+    assert_eq!(error.kind, ExcelErrorKind::Na);
+}
+
+#[test]
+fn sin_and_cos_reduce_by_pi_as_the_processor_has_it() {
+    let LiteralValue::Number(sin) = evaluated(engine(), "=SIN(PI())") else {
+        panic!("a number");
+    };
+    assert!((sin - 1.22514845490862e-16).abs() < 1e-28, "{sin}");
+    let LiteralValue::Number(cos) = evaluated(engine(), "=COS(PI()/2)") else {
+        panic!("a number");
+    };
+    assert!((cos - 6.1257422745431e-17).abs() < 1e-28, "{cos}");
+    assert_eq!(evaluated(engine(), "=COS(0)"), number(1.0));
+}
+
+#[test]
+fn sumif_reads_an_array_of_indirect_references_one_by_one() {
+    let mut e = engine();
+    e.add_sheet("One").unwrap();
+    e.add_sheet("Two").unwrap();
+    for (sheet, value) in [("One", 10.0), ("Two", 20.0)] {
+        e.set_cell_value(sheet, 1, 1, text("key")).unwrap();
+        e.set_cell_value(sheet, 1, 2, number(value)).unwrap();
+    }
+    assert_eq!(
+        evaluated(
+            e,
+            "=SUMPRODUCT(SUMIF(INDIRECT({\"One\";\"Two\"}&\"!A:A\"),\"key\",INDIRECT({\"One\";\"Two\"}&\"!B:B\")))"
+        ),
+        number(30.0)
+    );
+}
+
+#[test]
+fn a_function_given_by_name_reads_as_its_name() {
+    let mut e = engine();
+    for (row, (group, value)) in [("b", 1.0), ("a", 2.0), ("b", 3.0)].iter().enumerate() {
+        let row = row as u32 + 1;
+        e.set_cell_value("Sheet1", row, 1, text(group)).unwrap();
+        e.set_cell_value("Sheet1", row, 2, number(*value)).unwrap();
+    }
+    assert_eq!(
+        evaluated(e, "=INDEX(GROUPBY(A1:A3,B1:B3,_xleta.SUM,0),1,2)"),
+        number(2.0),
+        "sorted by group, with a in the first row"
+    );
+}
+
+#[test]
+fn renaming_a_sheet_to_other_letters_changes_its_spelling() {
+    let mut e = engine();
+    let id = e.sheet_id("Sheet1").unwrap();
+    e.rename_sheet(id, "sheet1").unwrap();
+    assert_eq!(e.sheet_name(id), "sheet1");
 }
