@@ -378,6 +378,14 @@ impl DependencyGraph {
     }
 
     /// Iterate workbook-scoped named ranges (for bindings/testing)
+    /// Every defined name's vertex, at either scope.
+    pub(crate) fn named_vertices(&self) -> impl Iterator<Item = VertexId> + '_ {
+        self.named_ranges
+            .values()
+            .chain(self.sheet_named_ranges.values())
+            .map(|named| named.vertex)
+    }
+
     pub fn named_ranges_iter(&self) -> impl Iterator<Item = (&String, &NamedRange)> {
         self.named_ranges.iter()
     }

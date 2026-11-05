@@ -6155,7 +6155,8 @@ where
     }
 
     fn mark_all_formula_vertices_dirty(&mut self) {
-        let vertices: Vec<VertexId> = self.graph.vertices_with_formulas().collect();
+        let mut vertices: Vec<VertexId> = self.graph.vertices_with_formulas().collect();
+        vertices.extend(self.graph.named_vertices());
         for vertex in vertices {
             self.graph.mark_vertex_dirty(vertex);
         }
@@ -17336,7 +17337,14 @@ where
         if self.has_staged_formulas() {
             self.build_graph_all()?;
         }
-        let vertices = self.graph.get_evaluation_vertices();
+        // A defined name's value isn't in the file, so names stay due and work theirs out.
+        let mut vertices = self.graph.get_evaluation_vertices();
+        vertices.retain(|&vertex| {
+            !matches!(
+                self.graph.get_vertex_kind(vertex),
+                VertexKind::NamedScalar | VertexKind::NamedArray
+            )
+        });
         self.graph.clear_dirty_flags(&vertices);
         Ok(vertices.len())
     }
