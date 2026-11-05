@@ -52,6 +52,7 @@ mod debug_vertex_lifecycle;
 mod dynamic_freshness;
 mod dynamic_topo;
 mod evaluate_slice;
+mod excel_arrays;
 mod fixed_arrays;
 mod lambda_call_arena;
 mod legacy_semantics_pins;
