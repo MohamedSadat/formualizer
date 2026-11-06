@@ -14070,6 +14070,94 @@ where
         out
     }
 
+    /// Works out a formula as if it were copied from `anchor` (1-based) to the cell at `row` and
+    /// `col`, without putting it anywhere: conditional formats and data validation hold formulas
+    /// written for their range's first cell, which Excel works out for each cell they cover.
+    pub fn evaluate_formula_at(
+        &self,
+        sheet: &str,
+        anchor: (u32, u32),
+        row: u32,
+        col: u32,
+        ast: &ASTNode,
+    ) -> LiteralValue {
+        let Some(sheet_id) = self.graph.sheet_id(sheet) else {
+            return LiteralValue::Error(ExcelError::new(ExcelErrorKind::Ref));
+        };
+        let cell = CellRef::new(
+            sheet_id,
+            Coord::new(row.saturating_sub(1), col.saturating_sub(1), true, true),
+        );
+        let interpreter = Interpreter::new_with_cell(self, sheet, cell)
+            .with_resolved_functions(&self.resolved_functions)
+            .with_arena_cells(self)
+            .with_reference_delta(
+                i64::from(row) - i64::from(anchor.0),
+                i64::from(col) - i64::from(anchor.1),
+            );
+        match interpreter.evaluate_ast(ast) {
+            Ok(value) => value.into_literal(),
+            Err(error) => LiteralValue::Error(error),
+        }
+    }
+
+    /// As `get_range_values`, handing each cell to `visit` (row and column offsets from the
+    /// range's top left) rather than building rows of them, which costs as much again for a long
+    /// column.
+    pub fn for_each_range_value(
+        &self,
+        sheet: &str,
+        sr: u32,
+        sc: u32,
+        er: u32,
+        ec: u32,
+        mut visit: impl FnMut(usize, usize, LiteralValue),
+    ) {
+        let height = er.saturating_sub(sr).saturating_add(1) as usize;
+        let width = ec.saturating_sub(sc).saturating_add(1) as usize;
+        let Some(asheet) = self.sheet_store().sheet(sheet) else {
+            return;
+        };
+        let view = asheet.range_view(
+            sr.saturating_sub(1) as usize,
+            sc.saturating_sub(1) as usize,
+            er.saturating_sub(1) as usize,
+            ec.saturating_sub(1) as usize,
+        );
+        let sheet_id = self.graph.sheet_id(sheet);
+        let derived_formats = &self.derived_formats;
+        let has_derived_formats =
+            sheet_id.is_some_and(|sheet_id| derived_formats.any(|cell| cell.sheet_id == sheet_id));
+        let plain = !asheet.has_formats() && !has_derived_formats;
+        let format_registry = &self.format_registry;
+        for rr in 0..height {
+            for cc in 0..width {
+                let raw = view.get_cell(rr, cc);
+                if plain {
+                    visit(rr, cc, raw);
+                    continue;
+                }
+                let row0 = sr.saturating_sub(1).saturating_add(rr as u32);
+                let col0 = sc.saturating_sub(1).saturating_add(cc as u32);
+                let format = asheet.format_id(row0 as usize, col0 as usize).or_else(|| {
+                    let cell = CellRef::new(sheet_id?, Coord::new(row0, col0, true, true));
+                    derived_formats.get(&cell)
+                });
+                let class = format.and_then(|id| format_registry.class(id));
+                visit(
+                    rr,
+                    cc,
+                    Self::materialize_temporal_egress(
+                        raw,
+                        class,
+                        self.config.temporal_egress,
+                        self.config.date_system,
+                    ),
+                );
+            }
+        }
+    }
+
     /// Unified internal read API for a single cell value (Arrow-truth).
     /// The 1x1 spill fallback of a declared dynamic-array anchor: its
     /// committed result is a non-error, non-empty scalar. Scheduling orders

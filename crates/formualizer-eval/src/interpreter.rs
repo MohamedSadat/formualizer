@@ -393,6 +393,14 @@ impl<'a> Interpreter<'a> {
         }
     }
 
+    /// Reads relative references this many rows and columns further on, as a formula copied that
+    /// far would.
+    pub fn with_reference_delta(mut self, rows: i64, cols: i64) -> Self {
+        self.reference_row_delta = rows;
+        self.reference_col_delta = cols;
+        self
+    }
+
     pub(crate) fn with_arena_cells(mut self, resolver: &'a dyn ArenaCellResolver) -> Self {
         self.arena_cells = Some(resolver);
         self

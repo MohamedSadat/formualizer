@@ -25,7 +25,10 @@ fn a1_name_reads_as_reference(name: &str) -> bool {
     let upper = name.to_ascii_uppercase();
     let bytes = upper.as_bytes();
     let letters = bytes.iter().take_while(|b| b.is_ascii_uppercase()).count();
-    let digits = bytes[letters..].iter().take_while(|b| b.is_ascii_digit()).count();
+    let digits = bytes[letters..]
+        .iter()
+        .take_while(|b| b.is_ascii_digit())
+        .count();
     if letters + digits == bytes.len() && (1..=3).contains(&letters) && digits > 0 {
         let col = bytes[..letters]
             .iter()
